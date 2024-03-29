@@ -72,8 +72,7 @@ int over_angle = 0;
 uint16_t angle;
 uint8_t RxBuffer[5];
 uint8_t TxBuffer[5];
-int32_t PWM = 0;
-int a = 1;
+int16_t PWM = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -161,7 +160,7 @@ int main(void)
 //	  last_angle1 = ADC1_Channel.data;
 	  static uint32_t TimeStamp = 0;
 	  if( HAL_GetTick()>=TimeStamp){
-		  TimeStamp = HAL_GetTick()+100;
+		  TimeStamp = HAL_GetTick()+5;
 //		  ADC_Read_blocking();
 		  angle = Average_ADC();
 
@@ -498,14 +497,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	//interupt
 	if(huart == &hlpuart1)
 	{
-		if(RxBuffer[0] == 70){ // PWM
-			if(RxBuffer[2] == 1)
-				PWM = RxBuffer[1];
-
-			else if(RxBuffer[2] == 2){
-				PWM = -RxBuffer[1];
-			}
-		}
+		PWM = RxBuffer[1] | (RxBuffer[2] << 8);
 		HAL_UART_Receive_IT(&hlpuart1, RxBuffer, 4);
 	}
 }
@@ -515,12 +507,12 @@ void setMotor()
 	if(PWM > 0){
 		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7,GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,GPIO_PIN_SET);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*19999/100.0);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*19999/32767.0);
 	}
 	else{
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7,GPIO_PIN_SET);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*(-19999)/100.0);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*(-19999)/32767.0);
 	}
 }
 /* USER CODE END 4 */
