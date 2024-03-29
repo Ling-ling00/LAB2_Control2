@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "arm_math.h"
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,17 +63,21 @@ struct _ADC_tag ADC1_Channel = {
 	.data = 0
 };
 uint16_t ADC_RawRead[40]={0};
-uint16_t rawAngle;
-uint16_t last_angle1 = 0;
-uint16_t last_angle2 = 0;
-uint16_t last_angle3 = 0;
-uint16_t diff_angle1 = 0;
-uint16_t diff_angle2 = 0;
-int over_angle = 0;
 uint16_t angle;
 uint8_t RxBuffer[5];
 uint8_t TxBuffer[5];
 int16_t PWM = 0;
+
+arm_pid_instance_f32 PID = {0};
+float position = 0;
+float setposition = 0;
+float Vfeedback = 0;
+float ErrorNormal = 0;
+float ErrorWrapPlus = 0;
+float ErrorWrapMinus = 0;
+float Error = 0;
+int mode = 1;
+int a = 1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,6 +92,7 @@ void ADC_Read_blocking();
 void UARTInterruptConfig();
 uint16_t Average_ADC();
 void setMotor();
+void Wrapselect();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -137,6 +143,12 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7,GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,GPIO_PIN_RESET);
+
+  PID.Kp = 1;
+  PID.Ki = 0.00000001;
+  PID.Kd = 0;
+  arm_pid_init_f32(&PID, 0);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -158,21 +170,42 @@ int main(void)
 //		  a++;
 //	  }
 //	  last_angle1 = ADC1_Channel.data;
-	  static uint32_t TimeStamp = 0;
-	  if( HAL_GetTick()>=TimeStamp){
-		  TimeStamp = HAL_GetTick()+5;
-//		  ADC_Read_blocking();
-		  angle = Average_ADC();
+	  if(mode == 3){
+		  static uint32_t TimeStamp = 0;
+		  if( HAL_GetTick()>=TimeStamp){
+			  TimeStamp = HAL_GetTick()+5;
+			  angle = Average_ADC();
 
-		  TxBuffer[0] = 69; // header
-		  TxBuffer[1] = angle & 0xff;
-		  TxBuffer[2] = (angle & 0xff00) >> 8;
-		  TxBuffer[3] = 10; // \n
+			  TxBuffer[0] = 69; // header
+			  TxBuffer[1] = angle & 0xff;
+			  TxBuffer[2] = (angle & 0xff00) >> 8;
+			  TxBuffer[3] = 10; // \n
 
-		  HAL_UART_Transmit(&hlpuart1,TxBuffer, 4, 10);
+			  HAL_UART_Transmit(&hlpuart1,TxBuffer, 4, 10);
 
-		  setMotor();
+			  setMotor();
+		  }
 	  }
+
+	  if(mode == 1){
+		  static uint32_t timestamp = 0;
+		  if(timestamp < HAL_GetTick())
+		  {
+			  timestamp = HAL_GetTick()+2;
+
+			  Wrapselect();
+			  Vfeedback = arm_pid_f32(&PID, Error);
+			  position = Average_ADC()/4095.0*2*M_PI;
+			  if (Vfeedback > 12)
+				  Vfeedback = 12;
+			  else if (Vfeedback < -12)
+				  Vfeedback = -12;
+			  PWM = Vfeedback*32767.0/12.0;
+			  setMotor();
+			  a++;
+		  }
+	  }
+
   }
   /* USER CODE END 3 */
 }
@@ -515,6 +548,26 @@ void setMotor()
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*(-19999)/32767.0);
 	}
 }
+
+void Wrapselect()
+{
+	ErrorNormal = setposition - position;
+	ErrorWrapPlus = setposition - (2*M_PI + position);
+	ErrorWrapMinus = setposition - (2*M_PI - position);
+	if(fabsf(ErrorNormal) <= fabsf(ErrorWrapPlus) && fabsf(ErrorNormal) <= fabsf(ErrorWrapMinus))
+	{
+		Error = ErrorNormal;
+	}
+	else if(fabsf(ErrorWrapPlus) <= fabsf(ErrorNormal) && fabsf(ErrorWrapPlus) <= fabsf(ErrorWrapMinus))
+	{
+		Error = ErrorWrapPlus;
+	}
+	else if(fabsf(ErrorWrapMinus) <= fabsf(ErrorNormal) && fabsf(ErrorWrapMinus) <= fabsf(ErrorWrapPlus))
+	{
+		Error = ErrorWrapMinus;
+	}
+}
+
 /* USER CODE END 4 */
 
 /**
