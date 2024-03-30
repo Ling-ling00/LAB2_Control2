@@ -54,45 +54,42 @@ TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 
 /* USER CODE BEGIN PV */
-//struct _ADC_tag {
-//	ADC_ChannelConfTypeDef Config;
-//	uint16_t data;
-//};
-//struct _ADC_tag ADC1_Channel = {
-//	.Config.Channel = ADC_CHANNEL_1,
-//	.Config.Rank = ADC_REGULAR_RANK_1,
-//	.Config.SamplingTime = ADC_SAMPLETIME_640CYCLES_5,
-//	.Config.SingleDiff = ADC_SINGLE_ENDED,
-//	.Config.OffsetNumber = ADC_OFFSET_NONE,
-//	.Config.Offset = 0,
-//	.data = 0
-//};
+//Poten motor control
 uint16_t ADC_RawRead[40]={0};
 uint16_t angle;
+
+//UART for mode 3
 uint8_t RxBuffer[5];
 uint8_t TxBuffer[5];
+
+//output motor control
 int16_t PWM = 0;
 
+//for PID
 arm_pid_instance_f32 PID = {0};
-float position = 0;
-float setposition = 0;
+float position = 0; //position for calculate PID
+uint16_t ADC_RawRead2[40]={0}; // poten set position
+float setposition = 0; //target of PID
 float Vfeedback = 0;
+
+//find error in un-wrap and normal case
 float ErrorNormal = 0;
 float ErrorWrapPlus = 0;
 float ErrorWrapMinus = 0;
 float Error = 0;
+
+//mode
 int mode = 2;
+
+//debug
 int a = 1;
 
+//for mode 2
 uint32_t QEIReadRaw;
-uint32_t degree;
-uint32_t realdegree;
-float rpm;
-float rad;
-float w;
-float PWM1;
-float PWM2;
-
+uint32_t degree; //encoder degree
+uint32_t realdegree; //motor degree
+float PWM1; //output1 for motor
+float PWM2; //output2 for motor
 typedef struct
 {
 	// for record New / Old value to calculate dx / dt
@@ -108,8 +105,6 @@ enum
 {
 	NEW,OLD
 };
-
-uint16_t ADC_RawRead2[40]={0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -198,6 +193,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 
+  //PID
   PID.Kp = 1;
   PID.Ki = 0.00000001;
   PID.Kd = 0;
@@ -215,7 +211,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  //find set position
 	  setposition = Average_ADC2()/4095.0*2*M_PI;
+
 	  if(mode == 3){
 		  static uint32_t TimeStamp = 0;
 		  if( HAL_GetTick()>=TimeStamp){
@@ -231,24 +229,18 @@ int main(void)
 
 			  setMotor();
 		  }
+		  static uint32_t TimeStamp2 = 0;
+		  if( HAL_GetTick()>=TimeStamp2){
+			  TimeStamp2 = HAL_GetTick()+1000;
+			  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		  }
 	  }
+
 	  if(mode == 2){
 		  QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim4);
 		  realdegree = (QEIReadRaw*360)/3071;
 		  degree = (((QEIReadRaw*360)/3071)*64);
-
-		  //Call every 0.1 s
-		  static uint64_t timestamp =0;
-		  int64_t currentTime = micros();
-		  if(currentTime > timestamp)
-		  {
-			  timestamp =currentTime + 100000;//us
-		 	  QEIEncoderPosVel_Update();
-		 	  w = QEIdata.QEIAngularVelocity;
-		 	  rpm = (w *60)/3072;
-		 	  rad = rpm*2*M_PI/60;
-		  }
-		  position = (realdegree)*M_PI/180;
+		  position = ((realdegree)%360)*M_PI/180;
 		  Wrapselect();
 		  Vfeedback = arm_pid_f32(&PID, Error);
 		  if (Vfeedback > 5)
@@ -798,6 +790,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_13)
+	{
+		if(mode == 1){
+			mode = 2;
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+		}
+		else if(mode == 2){
+			mode = 3;
+		}
+		else if(mode == 3){
+			mode = 1;
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		}
+	}
+}
+
 uint16_t Average_ADC()
 {
 	uint32_t sum = 0;
@@ -819,15 +829,6 @@ uint16_t Average_ADC2()
 	average = sum/40;
 	return average;
 }
-
-//void ADC_Read_blocking()
-//{
-//	HAL_ADC_ConfigChannel(&hadc1, &ADC1_Channel.Config);
-//	HAL_ADC_Start(&hadc1);
-//	HAL_ADC_PollForConversion(&hadc1, 10);
-//	ADC1_Channel.data = HAL_ADC_GetValue(&hadc1);
-//	HAL_ADC_Stop(&hadc1);
-//}
 
 void UARTInterruptConfig()
 {
