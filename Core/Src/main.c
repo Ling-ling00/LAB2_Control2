@@ -274,7 +274,6 @@ int main(void)
 				  Vfeedback = -12;
 			  PWM = Vfeedback*32767.0/12.0;
 			  setMotor();
-			  a++;
 		  }
 	  }
 
@@ -727,14 +726,15 @@ static void MX_DMA_Init(void)
   /* DMA controller clock enable */
   __HAL_RCC_DMAMUX1_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+  /* DMA2_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel1_IRQn);
 
 }
 
@@ -852,11 +852,13 @@ void setMotor()
 		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7,GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,GPIO_PIN_SET);
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*19999/32767.0);
+		a++;
 	}
 	else{
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6,GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7,GPIO_PIN_SET);
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)PWM*(-19999)/32767.0);
+		a++;
 	}
 }
 
